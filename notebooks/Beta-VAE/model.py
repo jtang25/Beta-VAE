@@ -1,27 +1,32 @@
-class BetaVAE(tf.keras.Model):
-    def __init__(self, input_shape, z_dim=32, beta=4.0, **kwargs):
-        super(BetaVAE, self).__init__(**kwargs)
-        self.z_dim = z_dim
-        self.beta = beta
-        self.encoder = build_encoder(input_shape, z_dim)
-        self.decoder = build_decoder(input_shape, z_dim)
-    
-    def reparameterize(self, mu, logvar):
-        epsilon = tf.random.normal(shape=tf.shape(mu))
-        return mu + tf.exp(0.5 * logvar) * epsilon
+import tensorflow as tf
+from tensorflow import keras
+from tensorflow.keras import layers
+from SE_Block.SE_Block import squeeze_excitation_block
 
-    def call(self, inputs, training=None):
-        mu, logvar = self.encoder(inputs)
-        z = self.reparameterize(mu, logvar)
-        reconstructed = self.decoder(z)
-        return reconstructed, mu, logvar
-    
-    def compute_beta_vae_loss(model, x):
-        reconstructed, mu, logvar = model(x)
-        # Reconstruction loss (sum over all pixels)
-        reconstruction_loss = tf.reduce_sum(
-            losses.binary_crossentropy(x, reconstructed), axis=[1,2,3])
-        # KL Divergence
-        kl_loss = -0.5 * tf.reduce_sum(1 + logvar - tf.square(mu) - tf.exp(logvar), axis=1)
-        total_loss = tf.reduce_mean(reconstruction_loss + model.beta * kl_loss)
-        return total_loss, tf.reduce_mean(reconstruction_loss), tf.reduce_mean(kl_loss)
+latent_dim = 2
+
+class Sampling(layers.Layer):
+    """
+    Samples z from (mean, logvar) via the reparameterization trick.
+    """
+    def call(self, inputs):
+        mean, logvar = inputs
+        epsilon = tf.random.normal(shape=tf.shape(mean))
+        return mean + tf.exp(0.5 * logvar) * epsilon
+
+
+def build_encoder(input_shape=(28, 28, 1)) -> keras.Model:
+    """
+    Constructs the encoder network that outputs (z_mean, z_logvar, z).
+    """
+    encoder_inputs = keras.Input(shape=input_shape)
+    x = layers.Conv2D(32, 3, strides=2, padding='same', activation='relu')(encoder_inputs)
+    x = squeeze_excitation_block(x)
+    x = layers.Conv2D(64, 3, strides=2, padding='same', activation='relu')(x)
+    x = squeeze_excitation_block(x)
+    x = layers.Flatten()(x)
+    x = layers.Dense(16, activation='relu')(x)
+    z_mean = layers.Dense(latent_dim, name='z_mean')(x)
+    z_logvar = layers.Dense(latent_dim, name='z_logvar')(x)
+    z = Sampling(name='z')([z_mean, z_logvar])
+    return keras.Model(encoder_inputs, [z_mean, z_logvar, z], name='encoder')

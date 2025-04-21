@@ -1,18 +1,40 @@
-def build_decoder(output_shape, z_dim):
-    # Determine the size of the latent feature map (here 16x16 with 128 channels)
-    initial_shape = (16, 16, 128)
-    initial_units = np.prod(initial_shape)
-    
-    inputs = tf.keras.Input(shape=(z_dim,))
-    x = layers.Dense(initial_units, activation='relu')(inputs)
-    x = layers.Reshape(initial_shape)(x)
-    x = layers.Conv2DTranspose(128, kernel_size=4, strides=2, padding='same', activation='relu')(x)  # 32x32
-    x = SEBlock(128)(x)
-    x = layers.Conv2DTranspose(64, kernel_size=4, strides=2, padding='same', activation='relu')(x)   # 64x64
-    x = SEBlock(64)(x)
-    x = layers.Conv2DTranspose(32, kernel_size=4, strides=2, padding='same', activation='relu')(x)   # 128x128
-    x = SEBlock(32)(x)
-    outputs = layers.Conv2D(1, kernel_size=3, padding='same', activation='sigmoid')(x)
-    
-    decoder = models.Model(inputs, outputs, name='decoder')
-    return decoder
+import tensorflow as tf
+from tensorflow import keras
+from tensorflow.keras import layers
+from SE_Block.SE_Block import squeeze_excitation_block
+
+latent_dim = 2
+
+class DenseTranspose(layers.Layer):
+    """
+    Custom layer performing a transposed Dense operation.
+    """
+    def __init__(self, dense_layer, activation=None, **kwargs):
+        self.dense = dense_layer
+        self.activation = keras.activations.get(activation)
+        super().__init__(**kwargs)
+
+    def build(self, batch_input_shape):
+        self.bias = self.add_weight(
+            name='bias', shape=[self.dense.input_shape[-1]], initializer='zeros')
+        super().build(batch_input_shape)
+
+    def call(self, inputs):
+        z = tf.matmul(inputs, self.dense.weights[0], transpose_b=True)
+        return self.activation(z + self.bias)
+
+
+def build_decoder() -> keras.Model:
+    """
+    Constructs the decoder network mapping latent z back to image space.
+    """
+    dense_layer = layers.Dense(7 * 7 * 64, name='dense_up')
+    latent_inputs = keras.Input(shape=(latent_dim,))
+    x = DenseTranspose(dense_layer, activation='relu', name='dense_transpose')(latent_inputs)
+    x = layers.Reshape((7, 7, 64), name='reshape')(x)
+    x = layers.Conv2DTranspose(64, 3, strides=2, padding='same', activation='relu', name='deconv1')(x)
+    x = squeeze_excitation_block(x)
+    x = layers.Conv2DTranspose(32, 3, strides=2, padding='same', activation='relu', name='deconv2')(x)
+    x = squeeze_excitation_block(x)
+    outputs = layers.Conv2DTranspose(1, 3, padding='same', activation='sigmoid', name='reconstruction')(x)
+    return keras.Model(latent_inputs, outputs, name='decoder')
