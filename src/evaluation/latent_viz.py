@@ -1,6 +1,3 @@
-"""
-Standalone script to visualize latent traversal after loading a trained VAE.
-"""
 import numpy as np
 import matplotlib.pyplot as plt
 from notebooks.Beta_VAE.autoencoder import BetaVAE

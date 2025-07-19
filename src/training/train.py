@@ -1,12 +1,9 @@
-"""
-Training script for Beta-VAE with manual latent control demo.
-"""
 import time
 import numpy as np
 import matplotlib.pyplot as plt
 from tensorflow.keras.optimizers import Adam
 from notebooks.Beta_VAE.autoencoder import BetaVAE
-from utils.datautils import load_mnist_data
+from brain_tumor_utils.datautils import load_mnist_data
 
 
 def visualize_latent_control(decoder, coords: np.ndarray):
