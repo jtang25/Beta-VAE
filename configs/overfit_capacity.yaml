@@ -1,0 +1,119 @@
+paths:
+  raw_dir: data/raw
+  processed_dir: data/processed
+  labels_csv: data/labels/labels.csv
+  outputs_dir: outputs
+  models_dir: outputs/models
+  figures_dir: outputs/figures
+  tables_dir: outputs/tables
+  run_id: overfit_capacity
+
+data:
+  image_size: 256
+  grayscale: true
+  class_mode: binary
+  train_subdir: train
+  test_subdir: test
+  seed: 123
+
+model:
+  latent_dim: 32
+  base_channels: 16
+  num_blocks: 5
+  beta: 1.0
+  se_reduction_ratio: 16
+  encoder_norm: layer
+  activation: relu
+  reconstruction_loss: mse
+  use_decoder_se: false
+  deterministic_overfit: false
+  latent_reg_lambda: 0.0
+  encoder_pooling: flatten
+  latent_clamp: null
+  logvar_clamp: [-10, 5] 
+
+loss:
+  objective: beta_vae 
+  free_bits: 0.0
+  capacity_weight: 100.0
+  capacity_schedule:
+    enabled: false
+    C_start: 0.0
+    C_end: 25.0
+    warmup_epochs: 0
+    total_epochs: 150
+
+beta_schedule:
+  type: linear
+  start_beta: 0.0
+  end_beta: 4.0
+  warmup_epochs: 20
+  total_epochs: 150      
+
+training:
+  epochs: 150
+  batch_size: 8
+  grad_clip: 3.0
+  mixed_precision: false
+  num_workers: 0
+  pin_memory: false
+
+optimization:
+  optimizer: adam
+  lr: 0.001
+  weight_decay: 0.0
+  scheduler: none
+  warmup_epochs: 0
+
+beta_schedule:
+  type: constant
+  start_beta: 4.0
+  end_beta: 4.0
+  warmup_epochs: 0
+  cycle_length: 0
+
+augmentation:
+  horizontal_flip: false
+  rotation_degrees: 0
+  brightness: 0.0
+  use_augmentations: false
+
+evaluation:
+  num_umap_samples: 8
+  traversal_steps: 3
+  reconstruction_metrics: [mse]
+  cluster_metrics: []
+  probe_train_split: 0.5
+
+inference:
+  sample_grid_size: 8
+  traversal_latent_indices: []
+  tumor_latent_index: null
+  edit_span: 3.0
+  edit_steps: 5
+
+logging:
+  log_level: info
+  log_to_file: true
+  log_every_n_steps: 1
+
+experiment:
+  tag: overfit
+  notes: capacity_memorize
+
+debug:
+  enabled: true
+  train_samples: 8
+  test_samples: 8
+  max_train_batches: 999
+  max_val_batches: 999
+  epochs: 150
+  fixed_recon_paths:
+    - data\processed\test\glioma\Te-gl_0018.jpg
+    - data\processed\test\glioma\Te-gl_0082.jpg
+    - data\processed\test\meningioma\Te-me_0038.jpg
+    - data\processed\test\meningioma\Te-me_0077.jpg
+    - data\processed\test\notumor\Te-no_0034.jpg
+    - data\processed\test\notumor\Te-no_0054.jpg
+    - data\processed\test\glioma\Te-gl_0026.jpg
+    - data\processed\test\glioma\Te-gl_0030.jpg
