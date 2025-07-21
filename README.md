@@ -1,9 +1,11 @@
 # NucleusNet
 
 **A pipeline for learning tumor-specific features from brain MRI slices using a β-Variational Autoencoder (β-VAE) with Squeeze-and-Excitation blocks.**
+
 <p align="center">
   <img src="braintumor.gif" alt="MRI Tumor Reconstruction Demo" width="600"/>
 </p>
+
 ## Project Structure <br>
 ```
 NucleusNet/ <br>
