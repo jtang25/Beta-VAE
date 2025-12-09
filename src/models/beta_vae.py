@@ -184,7 +184,8 @@ class BetaVAE(nn.Module):
         if self.recon_loss_type == "bce":
             return F.binary_cross_entropy(recon, x, reduction="sum") / x.size(0)
         if self.recon_loss_type == "l1":
-            return F.l1_loss(recon, x, reduction="sum") / x.size(0)
+            # Mean per-pixel L1 (more stable vs. sum-per-batch).
+            return F.l1_loss(recon, x, reduction="mean")
         raise ValueError("invalid reconstruction_loss")
 
     def loss(self, x, beta=None, capacity=None, free_bits=0.0, capacity_weight=None):
