@@ -1,0 +1,97 @@
+augmentation:
+  brightness: 0.1
+  horizontal_flip: true
+  rotation_degrees: 10
+  use_augmentations: true
+beta_schedule:
+  cycle_length: 0
+  end_beta: 4.0
+  start_beta: 0.5
+  type: linear
+  warmup_epochs: 10
+data:
+  class_mode: binary
+  grayscale: true
+  image_size: 128
+  seed: 42
+  test_subdir: test
+  train_subdir: train
+debug:
+  enabled: true
+  epochs: 3
+  fixed_recon_paths: []
+  max_train_batches: 6
+  max_val_batches: 6
+  test_samples: 12
+  train_samples: 24
+evaluation:
+  cluster_metrics: []
+  num_umap_samples: 200
+  probe_train_split: 0.6
+  reconstruction_metrics:
+  - mse
+  - psnr
+  - ssim
+  traversal_steps: 5
+experiment:
+  notes: beta-VAE with SE blocks
+  tag: baseline
+inference:
+  edit_span: 3.0
+  edit_steps: 5
+  sample_grid_size: 8
+  traversal_latent_indices: []
+  tumor_latent_index: null
+logging:
+  log_every_n_steps: 10
+  log_level: info
+  log_to_file: true
+loss:
+  capacity_schedule:
+    C_end: 25.0
+    C_start: 0.0
+    enabled: false
+    total_epochs: 50
+    warmup_epochs: 0
+  capacity_weight: 100.0
+  free_bits: 0.0
+  objective: beta_vae
+model:
+  activation: relu
+  base_channels: 16
+  beta: 1.0
+  deterministic_overfit: false
+  encoder_norm: layer
+  encoder_pooling: flatten
+  latent_clamp: null
+  latent_dim: 32
+  latent_reg_lambda: 0.0
+  logvar_clamp:
+  - -10
+  - 5
+  num_blocks: 4
+  reconstruction_loss: mse
+  se_reduction_ratio: 16
+  use_decoder_se: true
+optimization:
+  lr: 0.001
+  optimizer: adam
+  scheduler: none
+  warmup_epochs: 0
+  weight_decay: 0.0
+paths:
+  figures_dir: C:\Users\jason\VSProjects\Beta-VAE\outputs\demo_run\figures
+  labels_csv: data/labels/labels.csv
+  models_dir: C:\Users\jason\VSProjects\Beta-VAE\outputs\demo_run\models
+  outputs_dir: C:\Users\jason\VSProjects\Beta-VAE\outputs\demo_run
+  processed_dir: C:\Users\jason\VSProjects\Beta-VAE\data\demo_processed
+  raw_dir: data/raw
+  run_id: notebook_demo
+  tables_dir: C:\Users\jason\VSProjects\Beta-VAE\outputs\demo_run\tables
+training:
+  batch_size: 4
+  epochs: 3
+  grad_clip: 3.0
+  mixed_precision: false
+  num_workers: 0
+  pin_memory: false

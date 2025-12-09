@@ -1,0 +1,110 @@
+paths:
+  raw_dir: data/braintumour
+  processed_dir: data/processed
+  labels_csv: data/labels/labels.csv
+  outputs_dir: outputs
+  models_dir: outputs/models
+  figures_dir: outputs/figures
+  tables_dir: outputs/tables
+  run_id: beta_vae_se
+
+data:
+  image_size: 128
+  grayscale: true
+  class_mode: binary
+  train_subdir: train
+  test_subdir: test
+  seed: 42
+
+model:
+  latent_dim: 32
+  base_channels: 64
+  num_blocks: 4
+  beta: 1.0
+  se_reduction_ratio: 16
+  encoder_norm: layer
+  activation: relu
+  reconstruction_loss: l1
+  use_decoder_se: true
+  deterministic_overfit: false
+  latent_reg_lambda: 0.0
+  encoder_pooling: flatten
+  latent_clamp: null
+  logvar_clamp: [-10, 5]
+
+loss:
+  objective: beta_vae
+  free_bits: 0.5                    # CHANGED: Prevents per-dimension collapse
+  capacity_weight: 0.0              # CHANGED: Enable capacity constraint
+  capacity_schedule:
+    enabled: false                   # CHANGED: Use capacity annealing
+    C_start: 5.0                    # CHANGED: Start at reasonable KL
+    C_end: 25.0                     # CHANGED: Target ~0.8 KL per dimension
+    warmup_epochs: 30               # CHANGED: Slow ramp to prevent collapse
+    total_epochs: 50
+  use_lpips: true
+  use_ffl: true
+  lpips_weight: 20.0
+  lpips_net: alex
+  ffl_weight: 1.0
+  ffl_alpha: 1.0
+
+beta_schedule:
+  type: linear
+  start_beta: 0.05                  # CHANGED: Start much lower
+  end_beta: 0.15                    # CHANGED: Don't go as high
+  warmup_epochs: 25                 # CHANGED: Slower ramp for stability
+  cycle_length: 0
+
+training:
+  epochs: 50
+  batch_size: 16
+  grad_clip: 3.0
+  mixed_precision: false
+  num_workers: 8
+  pin_memory: false
+
+optimization:
+  optimizer: adam
+  lr: 0.002
+  weight_decay: 0.0
+  scheduler: cosine
+  warmup_epochs: 5
+
+augmentation:
+  horizontal_flip: true
+  rotation_degrees: 10
+  brightness: 0.1
+  use_augmentations: true
+
+evaluation:
+  num_umap_samples: 200
+  traversal_steps: 5
+  reconstruction_metrics: [mse, psnr, ssim]
+  cluster_metrics: []
+  probe_train_split: 0.3
+
+inference:
+  sample_grid_size: 8
+  traversal_latent_indices: []
+  tumor_latent_index: null
+  edit_span: 3.0
+  edit_steps: 5
+
+logging:
+  log_level: info
+  log_to_file: true
+  log_every_n_steps: 10
+
+experiment:
+  tag: baseline
+  notes: beta-VAE with SE blocks
+
+debug:
+  enabled: false
+  train_samples: 32
+  test_samples: 16
+  max_train_batches: 10
+  max_val_batches: 10
+  epochs: 5
+  fixed_recon_paths: []

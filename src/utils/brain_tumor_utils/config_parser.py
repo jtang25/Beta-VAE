@@ -42,9 +42,39 @@ def _validate(cfg):
         raise ValueError("beta_schedule.type invalid")
     return True
 
+def _resolve_config_path(path=None):
+    """
+    Pick a usable config path using the following priority:
+      1) explicit function argument
+      2) CONFIG_PATH environment variable
+      3) default config (configs/beta_vae_se.yaml)
+      4) known fallback (configs/overfit_capacity.yaml)
+    Raises FileNotFoundError if none are present.
+    """
+    candidates = []
+    if path:
+        candidates.append(path)
+    env_path = os.environ.get("CONFIG_PATH")
+    if env_path:
+        candidates.append(env_path)
+    candidates.append("configs/beta_vae_se.yaml")
+    candidates.append("configs/overfit_capacity.yaml")
+
+    tried = []
+    for cand in candidates:
+        if not cand:
+            continue
+        cand = os.path.expanduser(str(cand))
+        tried.append(cand)
+        if os.path.exists(cand):
+            return cand
+    raise FileNotFoundError(
+        f"Config file not found. Set CONFIG_PATH or pass a path. Tried: {tried}"
+    )
+
 def load_config(path=None):
-    path = path or os.environ.get("CONFIG_PATH","configs/beta_vae_se.yaml")
-    with open(path,"r") as f:
+    cfg_path = _resolve_config_path(path)
+    with open(cfg_path,"r") as f:
         raw = yaml.safe_load(f)
     _validate(raw)
     return raw

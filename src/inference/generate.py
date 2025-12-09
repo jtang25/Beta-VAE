@@ -1,7 +1,15 @@
 import os
+import sys
+from pathlib import Path
 import torch
 import numpy as np
 from torchvision.utils import save_image
+
+# Ensure src/ is on sys.path when run as a script.
+_SRC_ROOT = Path(__file__).resolve().parents[1]
+if str(_SRC_ROOT) not in sys.path:
+    sys.path.insert(0, str(_SRC_ROOT))
+
 from utils.brain_tumor_utils.config_parser import get_config
 from data_processing.augmentations import get_test_transforms
 from utils.brain_tumor_utils.datautils import build_dataloaders
@@ -17,10 +25,13 @@ def load_model(weights="best"):
     model.load_state_dict(payload["model_state"])
     return model
 
-def sample_random(model, n, out_dir):
+def sample_random(model, n, out_dir, seed=None, filename="samples.png"):
+    if seed is not None:
+        torch.manual_seed(seed)
+        np.random.seed(seed)
     with torch.no_grad():
         imgs = model.sample_prior(n)
-        save_image(imgs, os.path.join(out_dir, "samples.png"), nrow=int(np.sqrt(n)), normalize=True)
+        save_image(imgs, os.path.join(out_dir, filename), nrow=int(np.sqrt(n)), normalize=True)
 
 def edit_tumor_factor(model, batch, device, dim, steps, span, out_dir):
     with torch.no_grad():
@@ -53,13 +64,25 @@ def interpolate(model, img_a, img_b, device, steps, out_dir):
         save_image(grid, os.path.join(out_dir, "interpolation.png"), nrow=steps, normalize=True)
 
 def main():
+    import argparse
+    parser = argparse.ArgumentParser(description="Generate samples/traversals from a trained Beta-VAE.")
+    parser.add_argument("--config", type=str, default=None, help="Path to YAML config")
+    parser.add_argument("--weights", type=str, default="best", help="Checkpoint tag (best or latest)")
+    parser.add_argument("--num-samples", type=int, default=None, help="Number of prior samples to generate")
+    parser.add_argument("--seed", type=int, default=None, help="Seed for sampling latent codes")
+    args = parser.parse_args()
+    if args.config:
+        os.environ["CONFIG_PATH"] = args.config
+
     cfg = get_config()
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     test_tf = get_test_transforms()
     _, test_loader = build_dataloaders(transform_train=test_tf, transform_test=test_tf)
-    model = load_model("best").to(device)
+    model = load_model(args.weights).to(device)
     out_dir = cfg.paths.figures_dir
-    sample_random(model, cfg.inference.sample_grid_size, out_dir)
+    n = args.num_samples or cfg.inference.sample_grid_size
+    sample_random(model, n, out_dir, seed=args.seed, filename="samples.png")
+
     tumor_dim = cfg.inference.tumor_latent_index
     if tumor_dim is not None:
         for batch in test_loader:

@@ -1,4 +1,3 @@
-# training/schedulers.py
 import math
 import inspect
 
@@ -9,10 +8,8 @@ def _to_mapping(obj):
     """
     if isinstance(obj, dict):
         return obj
-    # Some OmegaConf nodes have .keys(); if so we can just iterate
     if hasattr(obj, "keys") and callable(getattr(obj, "keys")):
         return {k: getattr(obj, k) for k in obj.keys()}
-    # Fallback: dir() and filter callables / private
     out = {}
     for k in dir(obj):
         if k.startswith("_"):
@@ -36,11 +33,9 @@ class BetaScheduler:
     def __init__(self, root_cfg, total_epochs):
         root_map = _to_mapping(root_cfg)
 
-        # Extract sub-config (if missing, create minimal)
         if "beta_schedule" in root_map:
             raw_bs = root_map["beta_schedule"]
         else:
-            # fallback to model.beta
             model_beta = 1.0
             if "model" in root_map and isinstance(root_map["model"], (dict, object)):
                 model_map = _to_mapping(root_map["model"])
@@ -49,7 +44,6 @@ class BetaScheduler:
 
         bs = _to_mapping(raw_bs)
 
-        # Normalize keys
         self.type = bs.get("type", "constant")
         self.start = bs.get("start_beta", bs.get("start",
                       bs.get("end_beta", bs.get("end", 1.0))))
@@ -67,7 +61,6 @@ class BetaScheduler:
             ratio = min(1.0, epoch / float(self.warm))
             return self.start + (self.end - self.start) * ratio
         if self.type == "cosine":
-            # smooth transition start->end over total_epochs
             if self.total_epochs <= 1:
                 return self.end
             return ( self.start +
@@ -101,9 +94,8 @@ class CapacityScheduler:
         self.C0 = cs.get("C_start", 0.0)
         self.C1 = cs.get("C_end", self.C0)
         self.warm = cs.get("warmup_epochs", 0)
-        # total_epochs in schedule can override training epochs
         self.total = cs.get("total_epochs", total_epochs)
-        self.total_epochs = total_epochs  # keep original training loop length
+        self.total_epochs = total_epochs
 
     def value(self, epoch: int):
         if not self.enabled:

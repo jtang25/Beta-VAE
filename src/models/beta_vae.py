@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from utils.brain_tumor_utils.config_parser import get_config
+from training.losses import FocalFrequencyLoss, LPIPSLoss
 from .se_blocks import SEBlock
 
 def _get_activation(name):
@@ -79,6 +80,13 @@ class BetaVAE(nn.Module):
         self.latent_reg_lambda = getattr(mcfg, "latent_reg_lambda", 0.0)
         self.pooling = getattr(mcfg, "encoder_pooling", "flatten")
         self.latent_clamp = getattr(mcfg, "latent_clamp", None)
+        lcfg = getattr(self.cfg, "loss", None)
+        self.use_lpips = getattr(lcfg, "use_lpips", False)
+        self.use_ffl = getattr(lcfg, "use_ffl", False)
+        self.lpips_weight = getattr(lcfg, "lpips_weight", 0.0)
+        self.ffl_weight = getattr(lcfg, "ffl_weight", 0.0)
+        self.lpips_loss = LPIPSLoss(net=getattr(lcfg, "lpips_net", "alex"))
+        self.ffl_loss = FocalFrequencyLoss(alpha=getattr(lcfg, "ffl_alpha", 1.0))
         chs = [in_ch]
         for i in range(blocks):
             chs.append(base * (2 ** i))
@@ -172,9 +180,11 @@ class BetaVAE(nn.Module):
 
     def reconstruction_loss(self, recon, x):
         if self.recon_loss_type == "mse":
-            return F.mse_loss(recon, x, reduction="mean")
+            return F.mse_loss(recon, x, reduction="sum") / x.size(0)
         if self.recon_loss_type == "bce":
-            return F.binary_cross_entropy(recon, x, reduction="mean")
+            return F.binary_cross_entropy(recon, x, reduction="sum") / x.size(0)
+        if self.recon_loss_type == "l1":
+            return F.l1_loss(recon, x, reduction="sum") / x.size(0)
         raise ValueError("invalid reconstruction_loss")
 
     def loss(self, x, beta=None, capacity=None, free_bits=0.0, capacity_weight=None):
@@ -185,25 +195,34 @@ class BetaVAE(nn.Module):
           - free bits (per-dim clamp)
         """
         recon, mu, logvar, z = self.forward(x, deterministic=self.deterministic)
-        rec_loss = self.reconstruction_loss(recon, x)
+        base_recon = self.reconstruction_loss(recon, x)
+
+        lp = torch.zeros((), device=x.device)
+        ff = torch.zeros((), device=x.device)
+
+        if self.use_lpips and self.lpips_weight > 0:
+            lp = self.lpips_loss(recon, x) * self.lpips_weight
+
+        if self.use_ffl and self.ffl_weight > 0:
+            ff = self.ffl_loss(recon, x) * self.ffl_weight
+
+        rec_loss = base_recon + lp + ff
 
         if self.deterministic:
             kl_elem = torch.zeros((x.size(0), self.latent_dim), device=x.device)
             kl_per_dim = kl_elem.mean(dim=0)
             kl_mean = torch.zeros((), device=x.device)
         else:
-            # per-sample KL element-wise
-            kl_elem = -0.5 * (1 + logvar - mu.pow(2) - logvar.exp())  # [B,D]
+            kl_elem = -0.5 * (1 + logvar - mu.pow(2) - logvar.exp())
             kl_per_dim = kl_elem.mean(dim=0)
-            kl_mean = kl_elem.sum(dim=1).mean()          # scalar KL (mean over batch)
-        # Free bits (only if not using capacity objective)
+            kl_mean = kl_elem.sum(dim=1).mean()
         use_capacity = (capacity is not None) and (capacity_weight is not None)
         if not self.deterministic:
             if (free_bits > 0) and not use_capacity:
                 kl_per_dim_eff = torch.clamp(kl_per_dim, min=free_bits)
                 kl_effective = kl_per_dim_eff.sum()
             else:
-                kl_effective = kl_per_dim.sum()  # == kl_mean
+                kl_effective = kl_per_dim.sum()
         else:
             kl_effective = torch.zeros((), device=x.device)
 
@@ -214,7 +233,6 @@ class BetaVAE(nn.Module):
 
         if not self.deterministic:
             if use_capacity:
-                # If caller didn't pass capacity_weight, try config, else fall back.
                 if capacity_weight is None:
                     cfg_loss = getattr(self.cfg, "loss", None)
                     capacity_weight = getattr(cfg_loss, "capacity_weight", None) if cfg_loss else None
@@ -229,6 +247,9 @@ class BetaVAE(nn.Module):
         return {
             "total": total,
             "recon": rec_loss,
+            "recon_base": base_recon.detach(),
+            "recon_lpips": lp.detach(),
+            "recon_ffl": ff.detach(),
             "kl_mean": kl_mean,
             "kl_per_dim": kl_per_dim.detach(),
             "beta": torch.tensor(b),

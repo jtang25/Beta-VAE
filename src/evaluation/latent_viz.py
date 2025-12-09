@@ -18,6 +18,10 @@ def reduce_latents(latents, method="umap", n_neighbors=15, min_dist=0.1, seed=42
         from sklearn.decomposition import PCA
         pca = PCA(n_components=2, random_state=seed)
         return pca.fit_transform(latents)
+    if method == "tsne":
+        from sklearn.manifold import TSNE
+        tsne = TSNE(n_components=2, random_state=seed, init="random", learning_rate="auto")
+        return tsne.fit_transform(latents)
 
 def plot_latent_scatter(emb, labels, title, binary=True):
     plt.figure(figsize=(5,5))
@@ -42,10 +46,19 @@ def generate_latent_visualizations(model, test_loader, device):
     lim = cfg.evaluation.num_umap_samples
     latents, labels, paths = extract_latents(model, test_loader, device, limit=lim)
     binary = cfg.data.class_mode == "binary"
-    emb = reduce_latents(latents, method="umap")
-    fig = plot_latent_scatter(emb, labels, "Latent Scatter", binary=binary)
+    # UMAP / PCA fallback
+    emb_umap = reduce_latents(latents, method="umap")
+    fig = plot_latent_scatter(emb_umap, labels, "Latent Scatter (UMAP/PCA)", binary=binary)
     save_figure(fig, "latent_scatter")
     plt.close(fig)
+    # t-SNE
+    try:
+        emb_tsne = reduce_latents(latents, method="tsne")
+        fig_tsne = plot_latent_scatter(emb_tsne, labels, "Latent Scatter (t-SNE)", binary=binary)
+        save_figure(fig_tsne, "latent_scatter_tsne")
+        plt.close(fig_tsne)
+    except Exception:
+        pass
     per_dim_violin(latents, labels, binary)
 
 def per_dim_violin(latents, labels, binary=True):

@@ -95,22 +95,57 @@ def plot_train_val_losses(df: pd.DataFrame, out_path: Path) -> None:
     if lines:
         ax_train.legend(lines, labels, loc="upper right")
 
+    ax_val = axes[1]
+    ax_val_kl = ax_val.twinx()
+
+    val_total_line = None
+    val_recon_line = None
+    val_kl_line = None
+
     if not df_val.empty and "val_total_loss" in df_val and not df_val["val_total_loss"].isna().all():
-        axes[1].plot(
+        val_total_line = ax_val.plot(
             x_val,
             df_val["val_total_loss"],
             label="val_total_loss",
             color="tab:orange",
             marker="o",
-        )
-    else:
-        axes[1].text(0.5, 0.5, "No val_total_loss found", ha="center", va="center")
-    axes[1].set_title("Validation total loss")
-    axes[1].set_xlabel("step")
-    axes[1].set_ylabel("loss")
-    if axes[1].lines:
-        axes[1].legend()
-    axes[1].grid(True, linestyle="--", alpha=0.4)
+        )[0]
+
+    if not df_val.empty and "val_recon_loss" in df_val and not df_val["val_recon_loss"].isna().all():
+        val_recon_line = ax_val.plot(
+            x_val,
+            df_val["val_recon_loss"],
+            label="val_recon_loss",
+            color="tab:blue",
+            linestyle="--",
+            marker="x",
+        )[0]
+
+    if not df_val.empty and "val_kl" in df_val and not df_val["val_kl"].isna().all():
+        val_kl_line = ax_val_kl.plot(
+            x_val,
+            df_val["val_kl"],
+            label="val_kl",
+            color="tab:red",
+            marker="s",
+        )[0]
+
+    if all(v is None for v in (val_total_line, val_recon_line, val_kl_line)):
+        ax_val.text(0.5, 0.5, "No val metrics found", ha="center", va="center")
+
+    ax_val.set_title("Validation losses")
+    ax_val.set_xlabel("step")
+    ax_val.set_ylabel("total/recon loss", color="tab:blue")
+    ax_val.tick_params(axis="y", labelcolor="tab:blue")
+    ax_val.grid(True, linestyle="--", alpha=0.4)
+
+    ax_val_kl.set_ylabel("KL", color="tab:red")
+    ax_val_kl.tick_params(axis="y", labelcolor="tab:red")
+
+    val_lines = [l for l in (val_total_line, val_recon_line, val_kl_line) if l is not None]
+    val_labels = [l.get_label() for l in val_lines]
+    if val_lines:
+        ax_val.legend(val_lines, val_labels, loc="upper right")
 
     fig.tight_layout()
     out_path.parent.mkdir(parents=True, exist_ok=True)

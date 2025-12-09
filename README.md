@@ -64,3 +64,19 @@ python src/evaluation/traversal.py   --model outputs/models/latest.pth
 python src/inference/encode.py --input data/processed/test/...
 python src/inference/generate.py --latent "0.1, -1.2, ..."
 ```
+
+### Preprocess real data (from `data/braintumour`)
+Place your raw class folders under `data/braintumour/` (auto-detected; e.g., `glioma`, `meningioma`, `pituitary`, `notumor`), then run:
+```bash
+python scripts/preprocess_data.py                  # splits to data/processed/train|test, resizes/normalizes
+python src/training/train.py --config configs/beta_vae_se.yaml
+python src/evaluation/run_evaluation.py --config configs/beta_vae_se.yaml
+```
+
+### Quick synthetic demo (optional)
+If you just want a toy run without real data:
+```bash
+python scripts/generate_demo_data.py
+python src/training/train.py --config configs/demo_notebook.yaml
+python src/evaluation/run_evaluation.py --config configs/demo_notebook.yaml
+```

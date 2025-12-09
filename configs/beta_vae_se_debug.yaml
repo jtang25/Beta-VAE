@@ -1,0 +1,110 @@
+paths:
+  raw_dir: data/braintumour
+  processed_dir: data/processed
+  labels_csv: data/labels/labels.csv
+  outputs_dir: outputs
+  models_dir: outputs/models
+  figures_dir: outputs/figures
+  tables_dir: outputs/tables
+  run_id: beta_vae_se_debug
+
+data:
+  image_size: 128
+  grayscale: true
+  class_mode: binary
+  train_subdir: train
+  test_subdir: test
+  seed: 42
+
+model:
+  latent_dim: 32
+  base_channels: 64
+  num_blocks: 4
+  beta: 1.0
+  se_reduction_ratio: 16
+  encoder_norm: layer
+  activation: relu
+  reconstruction_loss: l1
+  use_decoder_se: true
+  deterministic_overfit: false
+  latent_reg_lambda: 0.0
+  encoder_pooling: flatten
+  latent_clamp: null
+  logvar_clamp: [-10, 5]
+
+loss:
+  objective: beta_vae
+  free_bits: 0.5
+  capacity_weight: 0.0
+  capacity_schedule:
+    enabled: false
+    C_start: 5.0
+    C_end: 25.0
+    warmup_epochs: 30
+    total_epochs: 50
+  use_lpips: true
+  use_ffl: true
+  lpips_weight: 20.0
+  lpips_net: alex
+  ffl_weight: 1.0
+  ffl_alpha: 1.0
+
+beta_schedule:
+  type: linear
+  start_beta: 0.05
+  end_beta: 0.15
+  warmup_epochs: 25
+  cycle_length: 0
+
+training:
+  epochs: 2
+  batch_size: 8
+  grad_clip: 3.0
+  mixed_precision: false
+  num_workers: 2
+  pin_memory: false
+
+optimization:
+  optimizer: adam
+  lr: 0.002
+  weight_decay: 0.0
+  scheduler: cosine
+  warmup_epochs: 5
+
+augmentation:
+  horizontal_flip: true
+  rotation_degrees: 10
+  brightness: 0.1
+  use_augmentations: true
+
+evaluation:
+  num_umap_samples: 50
+  traversal_steps: 3
+  reconstruction_metrics: [mse, psnr, ssim]
+  cluster_metrics: []
+  probe_train_split: 0.3
+
+inference:
+  sample_grid_size: 4
+  traversal_latent_indices: []
+  tumor_latent_index: null
+  edit_span: 3.0
+  edit_steps: 5
+
+logging:
+  log_level: info
+  log_to_file: false
+  log_every_n_steps: 1
+
+experiment:
+  tag: debug
+  notes: short run to calibrate LPIPS/FFL weights
+
+debug:
+  enabled: true
+  train_samples: 24
+  test_samples: 12
+  max_train_batches: 3
+  max_val_batches: 2
+  epochs: 2
+  fixed_recon_paths: []

@@ -15,13 +15,22 @@ class BrainTumorDataset(Dataset):
         self.transform = transform
         self.samples = []
         split_dir = os.path.join(root_dir, self.cfg.data.train_subdir if split=="train" else self.cfg.data.test_subdir)
+        if not os.path.exists(split_dir):
+            raise FileNotFoundError(f"Processed data split not found: {split_dir}. Did you run preprocessing or create a demo set?")
         classes = sorted([d for d in os.listdir(split_dir) if os.path.isdir(os.path.join(split_dir,d))])
+        if len(classes) == 0:
+            raise ValueError(f"No class folders found under {split_dir}. Expecting subdirectories per class.")
         self.original_classes = classes
         for cls in classes:
             cls_dir = os.path.join(split_dir, cls)
             for fname in os.listdir(cls_dir):
                 if fname.lower().endswith((".png",".jpg",".jpeg",".tif",".bmp",".tiff")):
                     self.samples.append((os.path.join(cls_dir,fname), cls))
+        if len(self.samples) == 0:
+            raise ValueError(
+                f"No images found under {split_dir}. Ensure raw data exists at {self.cfg.paths.raw_dir} "
+                "and run scripts/preprocess_data.py to populate processed splits."
+            )
         rng = random.Random(self.cfg.data.seed if split=="train" else self.cfg.data.seed+1)
         rng.shuffle(self.samples)
         if sample_limit is not None:
