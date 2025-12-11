@@ -1,13 +1,3 @@
-"""
-Run latent traversals on a specific image (not just the first batch).
-
-Usage:
-  python scripts/traverse_image.py --image path/to/image.png --config configs/beta_vae_se.yaml --checkpoint best
-
-Outputs:
-  - traversal_dim*.png under cfg.paths.figures_dir
-  - traversal_tumor_<class>.png per class-direction if available
-"""
 import argparse
 import os
 import sys
@@ -35,10 +25,10 @@ def load_model(checkpoint_tag, device):
         path = Path(cfg.paths.models_dir) / f"{cfg.paths.run_id}_{checkpoint_tag}.pt"
     else:
         path = Path(checkpoint_tag)
-    if not path.exists():
-        raise FileNotFoundError(f"Checkpoint not found: {path}")
     try:
-        payload = load_sharded_checkpoint(str(path), map_location=device, num_shards=2)
+        payload = load_sharded_checkpoint(str(path), map_location=device)
+    except FileNotFoundError as e:
+        raise FileNotFoundError(f"Checkpoint not found at {path} (base file or shards).") from e
     except Exception as e:
         raise RuntimeError(f"Failed to load checkpoint at {path}: {e}") from e
     model = BetaVAE()

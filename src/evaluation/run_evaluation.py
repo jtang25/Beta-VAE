@@ -23,7 +23,7 @@ def load_model(weights="best"):
     path = f"{cfg.paths.models_dir}/{cfg.paths.run_id}_{tag}.pt"
     if not os.path.exists(path):
         path = f"{cfg.paths.models_dir}/{cfg.paths.run_id}_latest.pt"
-    payload = load_sharded_checkpoint(path, map_location="cpu", num_shards=2)
+    payload = load_sharded_checkpoint(path, map_location="cpu")
     model = BetaVAE()
     model.load_state_dict(payload["model_state"])
     return model

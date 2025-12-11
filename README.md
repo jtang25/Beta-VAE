@@ -1,82 +1,109 @@
-# NucleusNet
+# Beta-VAE for Brain Tumor MRI
 
-**A pipeline for learning tumor-specific features from brain MRI slices using a β-Variational Autoencoder (β-VAE) with Squeeze-and-Excitation blocks.**
+![Reconstruction demo](braintumor.gif)
 
-<p align="center">
-  <img src="braintumor.gif" alt="MRI Tumor Reconstruction Demo" width="600"/>
-</p>
+Variational Autoencoder with Squeeze-and-Excitation blocks for learning tumor-specific features from brain MRI slices. Includes preprocessing, training, evaluation, traversal, and visualization scripts.
 
-## Project Structure <br>
-```
-NucleusNet/ <br>
-├── data/ <br>
-│   ├── raw/                  # Original unprocessed MRI images <br>
-│   └── processed/            # Normalized & resized images for training and testing <br>
-├── docs/                     # Project documentation (API reference, design notes) <br>
-├── configs/                  # Configuration files (YAML or JSON) for experiments <br>
-├── notebooks/                # Jupyter notebooks for exploratory data analysis <br>
-├── src/ <br>
-│   ├── data_processing/      # Scripts to convert raw images into processed dataset <br>
-│   ├── models/               # Model definitions: β-VAE, SE blocks <br>
-│   ├── training/             # Training loop, loss definitions, callbacks <br>
-│   ├── evaluation/           # Reconstruction metrics, latent visualizations, traversals <br>
-│   ├── inference/            # Encoding & generation utilities for trained models <br>
-│   └── utils/                # Shared utilities: I/O, logging, configuration parsing <br>
-├── experiments/              # Experiment scripts & logs <br>
-├── outputs/                  # Generated figures, trained models, result tables <br>
-├── ci/                       # Continuous integration & testing scripts <br>
-├── .gitignore <br>
-├── requirements.txt          # Python dependencies <br>
-├── installed_packages.txt    # Snapshot of installed packages & versions <br>
-└── README.md                 <br>
-```
+## Gallery
+- Training curve: ![Loss curves](outputs/figures/beta_vae_se_losses.png)
+- Reconstructions: ![Recon grid](outputs/figures/recon_epoch100.png)
+- Latent traversal: ![Traversal](outputs/figures/traversal_dim0.png)
+- Latent space preview: ![t-SNE](outputs/figures/latent_scatter_tsne.png)
 
+## Quick Start
+- Python 3.8+; CUDA GPU recommended.
+- Install deps: `pip install -r requirements.txt`
+- Optional: `export CONFIG_PATH=configs/beta_vae_se.yaml` (defaults to this file if unset).
+- Prepare data under `data/braintumour/` (class folders like `glioma`, `meningioma`, `pituitary`, `notumor`), then:
+  ```bash
+  python scripts/preprocess_data.py
+  ```
+- Train:
+  ```bash
+  python src/training/train.py
+  ```
+- Evaluate core metrics and plots:
+  ```bash
+  python src/evaluation/run_evaluation.py
+  python scripts/plot_logs.py
+  python scripts/plot_phase_losses.py
+  ```
 
+## Project Layout
+- `configs/` – experiment configs (default `beta_vae_se.yaml`).
+- `data/` – raw and processed MRI slices.
+- `outputs/` – logs, figures, tables, and model checkpoints (sharded `.pt`).
+- `scripts/` – CLI utilities (preprocessing, plotting, traversals, resharding).
+- `src/` – data processing, models, training loop, evaluation, inference, utils.
 
-## Prerequisites
+## Data Prep
+1) Place raw images in `data/braintumour/<class>/`.
+2) Normalize, resize, and split:
+   ```bash
+   python scripts/preprocess_data.py \
+     --raw-dir data/braintumour \
+     --out-dir data/processed
+   ```
+   (Flags are optional; defaults come from the config.)
 
-- Python 3.8+  
-- GPU with CUDA (optional but recommended for training)  
-- Dependencies listed in `requirements.txt`
-
-Install dependencies:
-
+## Training
 ```bash
-pip install -r requirements.txt
+python src/training/train.py \
+  --config configs/beta_vae_se.yaml
 ```
-## Usage
-1. Prepare data
-    - Place raw MRI scans under data/raw/brain_tumor_dataset/
-    - Run the preprocessing script or notebook in src/data_processing/ to populate data/processed/
+- Mixed precision is enabled by default when CUDA is available.
+- Checkpoints are saved sharded to `outputs/models/<run_id>_latest_shard*.pt` (and `best_*.pt`).
 
-2. Train model
-```python
-python src/training/train.py --config configs/beta_vae_se.yaml
-```
-3. Evaluate
-```python
-python src/evaluation/recon_metrics.py --model outputs/models/latest.pth
-python src/evaluation/latent_viz.py  --model outputs/models/latest.pth
-python src/evaluation/traversal.py   --model outputs/models/latest.pth
-```
-4. Inference / Generation
-```bash
-python src/inference/encode.py --input data/processed/test/...
-python src/inference/generate.py --latent "0.1, -1.2, ..."
-```
+## Evaluation & Visuals
+- Full evaluation suite:
+  ```bash
+  python src/evaluation/run_evaluation.py
+  ```
+- Log plots:
+  ```bash
+  python scripts/plot_logs.py
+  python scripts/plot_phase_losses.py
+  ```
+- Quick overfit diagnostic on a small subset:
+  ```bash
+  python scripts/diag_overfit.py
+  ```
 
-### Preprocess real data (from `data/braintumour`)
-Place your raw class folders under `data/braintumour/` (auto-detected; e.g., `glioma`, `meningioma`, `pituitary`, `notumor`), then run:
-```bash
-python scripts/preprocess_data.py                  # splits to data/processed/train|test, resizes/normalizes
-python src/training/train.py --config configs/beta_vae_se.yaml
-python src/evaluation/run_evaluation.py --config configs/beta_vae_se.yaml
-```
+## Inference & Traversals
+- Encode latent vectors for a folder or single file:
+  ```bash
+  python src/inference/encode.py --path data/processed/test
+  ```
+- Generate samples from latents:
+  ```bash
+  python src/inference/generate.py --num-samples 16
+  ```
+- Latent traversals for a specific image:
+  ```bash
+  python scripts/traverse_image.py \
+    --image path/to/image.png \
+    --checkpoint best \
+    --indices 0,1,2 \
+    --span 3.0 \
+    --steps 7
+  ```
 
-### Quick synthetic demo (optional)
-If you just want a toy run without real data:
-```bash
-python scripts/generate_demo_data.py
-python src/training/train.py --config configs/demo_notebook.yaml
-python src/evaluation/run_evaluation.py --config configs/demo_notebook.yaml
-```
+## Checkpoints & Shards
+- Loading is done via `utils.brain_tumor_utils.io.load_sharded_checkpoint`, which transparently merges shards.
+- To reshard (e.g., change shard count):
+  ```bash
+  python scripts/reshard_checkpoint.py --checkpoint latest --num-shards 6
+  ```
+- Default run id and paths are defined in `configs/beta_vae_se.yaml` (`paths.run_id`, `paths.models_dir`, etc.).
+
+## Useful Scripts
+- `scripts/preprocess_data.py` – build processed dataset.
+- `scripts/plot_logs.py`, `scripts/plot_phase_losses.py` – visualize training curves.
+- `scripts/traverse_image.py` – per-image latent traversals.
+- `scripts/diag_overfit.py` – small-split reconstruction sanity check.
+- `scripts/reshard_checkpoint.py` – merge and reshard checkpoints.
+
+## Tips
+- Override any config by exporting `CONFIG_PATH` or passing `--config` to scripts.
+- Logs live in `outputs/logs/`; figures and tables are under `outputs/figures/` and `outputs/tables/`.
+- If running CPU-only, ensure `training.mixed_precision` is compatible (set false if needed). 

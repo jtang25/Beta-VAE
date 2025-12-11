@@ -266,7 +266,7 @@ def train(resume="none"):
     if resume in ["best", "latest"]:
         path = os.path.join(cfg.paths.models_dir, f"{cfg.paths.run_id}_{resume}.pt")
         if os.path.exists(path):
-            payload = load_sharded_checkpoint(path, map_location=device, num_shards=2)
+            payload = load_sharded_checkpoint(path, map_location=device)
             model.load_state_dict(payload.get("model_state", payload))
             if "optim_state" in payload:
                 optimizer.load_state_dict(payload["optim_state"])

@@ -11,7 +11,7 @@ test_tf = get_test_transforms()
 train_loader, test_loader = build_dataloaders(train_tf, test_tf, train_limit=cfg.debug.train_samples, test_limit=cfg.debug.test_samples)
 
 ckpt_path = f"{cfg.paths.models_dir}/{cfg.paths.run_id}_latest.pt"
-ckpt = load_sharded_checkpoint(ckpt_path, map_location="cpu", num_shards=2)
+ckpt = load_sharded_checkpoint(ckpt_path, map_location="cpu")
 model = BetaVAE()
 model.load_state_dict(ckpt["model_state"])
 model.eval()

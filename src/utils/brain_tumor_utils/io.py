@@ -39,12 +39,23 @@ def save_sharded_checkpoint(base_path, payload, num_shards=2):
     return _shard_paths(base_path, num_shards)
 
 
-def load_sharded_checkpoint(base_path, map_location=None, num_shards=2):
+def load_sharded_checkpoint(base_path, map_location=None, num_shards=None):
     """
     Load checkpoint saved via save_sharded_checkpoint. Falls back to single-file checkpoints.
+    If num_shards is None, the function will autodetect the shard count by globbing for
+    `<base>_shard*.pt` (or matching suffix) alongside the base file.
     """
-    shard_paths = _shard_paths(base_path, num_shards)
-    if all(os.path.exists(p) for p in shard_paths):
+    root, ext = os.path.splitext(base_path)
+    suffix = ext if ext else ".pt"
+    shard_paths = []
+    if num_shards is None:
+        import glob
+        shard_paths = sorted(glob.glob(f"{root}_shard*{suffix}"))
+        if shard_paths:
+            num_shards = len(shard_paths)
+    if not shard_paths and num_shards is not None:
+        shard_paths = _shard_paths(base_path, num_shards)
+    if shard_paths and all(os.path.exists(p) for p in shard_paths):
         merged = {}
         meta = {}
         for p in shard_paths:

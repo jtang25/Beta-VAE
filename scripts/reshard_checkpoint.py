@@ -1,10 +1,3 @@
-"""
-Combine existing checkpoint shards into a full payload and reshard to a new count.
-
-Usage examples:
-  python scripts/reshard_checkpoint.py --num-shards 4 --checkpoint latest
-  python scripts/reshard_checkpoint.py --num-shards 6 --checkpoint outputs/models/beta_vae_se_best.pt
-"""
 import argparse
 import os
 import sys
