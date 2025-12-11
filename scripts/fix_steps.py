@@ -8,7 +8,7 @@ if len(sys.argv) != 3:
 input_path = sys.argv[1]
 output_path = sys.argv[2]
 
-current_step = 0
+last_train_step = None
 
 with open(input_path, "r") as fin, open(output_path, "w") as fout:
     for line in fin:
@@ -23,11 +23,16 @@ with open(input_path, "r") as fin, open(output_path, "w") as fout:
                 fout.write(line)
                 continue
 
-            if data.get("phase") == "train":
-                current_step += 25
-                data["step"] = current_step
+            phase = data.get("phase")
 
-            new_json = json.dumps(data, separators=(",", ": "))
+            if phase == "train":
+                if "step" in data:
+                    last_train_step = data["step"]
+
+            elif phase == "val" and last_train_step is not None:
+                data["step"] = last_train_step
+
+            new_json = json.dumps(data, separators=(", ", ": "))
             fout.write(prefix + new_json + "\n")
         else:
             fout.write(line)

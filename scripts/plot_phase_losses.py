@@ -46,6 +46,8 @@ def plot_train_val_losses(df: pd.DataFrame, out_path: Path) -> None:
         raise ValueError("No phase column found in metrics log.")
 
     df_train = df[df["phase"] == "train"].copy()
+    if len(df_train) > 7:
+        df_train = df_train.iloc[7:]
     df_val = df[df["phase"] == "val"].copy()
     if df_train.empty and df_val.empty:
         raise ValueError("No train or val metrics found in the log.")
@@ -59,7 +61,7 @@ def plot_train_val_losses(df: pd.DataFrame, out_path: Path) -> None:
         x_val = df_val["step"]
         x_val_label = "step"
     elif "epoch" in df_val and df_val["epoch"].notna().any():
-        x_val = df_val["epoch"] * 360
+        x_val = df_val["epoch"] * 180
         x_val_label = "epoch (scaled to step)"
     else:
         x_val = df_val.index
