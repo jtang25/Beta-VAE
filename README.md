@@ -6,7 +6,7 @@ Variational Autoencoder with Squeeze-and-Excitation blocks for learning tumor-sp
 - **Training stability**: phase losses (recon/kl/etc.).  
   ![Loss curves](outputs/figures/beta_vae_se_losses.png)
 - **Recon quality**: input vs. reconstruction grid.  
-  ![Recon grid](outputs/figures/recon_epoch100.png)
+  ![Recon grid](outputs/saved/final_recon.png)
 - **Latent structure (3D UMAP)**: rotating embedding with class coloring.  
   ![UMAP 3D](outputs/figures/umap3d.gif)
 - **Traversals grid**: per-class latent traversals across ±3σ steps.  
