@@ -2,15 +2,16 @@ from utils.brain_tumor_utils.config_parser import get_config
 from utils.brain_tumor_utils.datautils import build_dataloaders
 from data_processing.augmentations import get_train_transforms, get_test_transforms
 from models.beta_vae import BetaVAE
-import torch, glob, os, json
+import torch, os, json
+from utils.brain_tumor_utils.io import load_sharded_checkpoint
 
 cfg = get_config()
 train_tf = get_train_transforms()
 test_tf = get_test_transforms()
 train_loader, test_loader = build_dataloaders(train_tf, test_tf, train_limit=cfg.debug.train_samples, test_limit=cfg.debug.test_samples)
 
-ckpt_path = sorted(glob.glob(f"{cfg.paths.models_dir}/{cfg.paths.run_id}_latest.pt"))[-1]
-ckpt = torch.load(ckpt_path, map_location="cpu")
+ckpt_path = f"{cfg.paths.models_dir}/{cfg.paths.run_id}_latest.pt"
+ckpt = load_sharded_checkpoint(ckpt_path, map_location="cpu", num_shards=2)
 model = BetaVAE()
 model.load_state_dict(ckpt["model_state"])
 model.eval()

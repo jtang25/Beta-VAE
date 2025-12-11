@@ -2,6 +2,7 @@ import torch
 import os
 import math
 from utils.brain_tumor_utils.config_parser import get_config
+from utils.brain_tumor_utils.io import save_sharded_checkpoint
 
 class GradScalerWrapper:
     def __init__(self, enabled):
@@ -60,24 +61,32 @@ class CheckpointManager:
         self.best_value = None
     def save_latest(self, epoch, total_steps, extra):
         path = os.path.join(self.dir, f"{self.run_id}_latest.pt")
-        torch.save({
-            "epoch": epoch,
-            "total_steps": total_steps,
-            "model_state": self.model.state_dict(),
-            "optim_state": self.optimizer.state_dict(),
-            **extra
-        }, path)
-    def save_best(self, epoch, total_steps, extra, monitor_value):
-        if self.best_value is None or monitor_value < self.best_value:
-            self.best_value = monitor_value
-            path = os.path.join(self.dir, f"{self.run_id}_best.pt")
-            torch.save({
+        save_sharded_checkpoint(
+            path,
+            {
                 "epoch": epoch,
                 "total_steps": total_steps,
                 "model_state": self.model.state_dict(),
                 "optim_state": self.optimizer.state_dict(),
                 **extra
-            }, path)
+            },
+            num_shards=2,
+        )
+    def save_best(self, epoch, total_steps, extra, monitor_value):
+        if self.best_value is None or monitor_value < self.best_value:
+            self.best_value = monitor_value
+            path = os.path.join(self.dir, f"{self.run_id}_best.pt")
+            save_sharded_checkpoint(
+                path,
+                {
+                    "epoch": epoch,
+                    "total_steps": total_steps,
+                    "model_state": self.model.state_dict(),
+                    "optim_state": self.optimizer.state_dict(),
+                    **extra
+                },
+                num_shards=2,
+            )
 
 
 def get_optimizer(model):

@@ -26,6 +26,7 @@ from utils.brain_tumor_utils.datautils import build_dataloaders
 from data_processing.augmentations import get_test_transforms
 from models.beta_vae import BetaVAE
 from evaluation.traversal import run_traversals
+from utils.brain_tumor_utils.io import load_sharded_checkpoint
 
 
 def load_model(checkpoint_tag, device):
@@ -37,7 +38,7 @@ def load_model(checkpoint_tag, device):
     if not path.exists():
         raise FileNotFoundError(f"Checkpoint not found: {path}")
     try:
-        payload = torch.load(path, map_location=device)
+        payload = load_sharded_checkpoint(str(path), map_location=device, num_shards=2)
     except Exception as e:
         raise RuntimeError(f"Failed to load checkpoint at {path}: {e}") from e
     model = BetaVAE()

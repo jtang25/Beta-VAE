@@ -13,6 +13,7 @@ from models.beta_vae import BetaVAE
 from evaluation.recon_metrics import evaluate_full
 from evaluation.latent_viz import generate_latent_visualizations
 from evaluation.traversal import run_traversals
+from utils.brain_tumor_utils.io import load_sharded_checkpoint
 
 def load_model(weights="best"):
     cfg = get_config()
@@ -22,7 +23,7 @@ def load_model(weights="best"):
     path = f"{cfg.paths.models_dir}/{cfg.paths.run_id}_{tag}.pt"
     if not os.path.exists(path):
         path = f"{cfg.paths.models_dir}/{cfg.paths.run_id}_latest.pt"
-    payload = torch.load(path, map_location="cpu")
+    payload = load_sharded_checkpoint(path, map_location="cpu", num_shards=2)
     model = BetaVAE()
     model.load_state_dict(payload["model_state"])
     return model

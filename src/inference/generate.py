@@ -13,13 +13,14 @@ from utils.brain_tumor_utils.config_parser import get_config
 from data_processing.augmentations import get_test_transforms
 from utils.brain_tumor_utils.datautils import build_dataloaders
 from models.beta_vae import BetaVAE
+from utils.brain_tumor_utils.io import load_sharded_checkpoint
 
 def load_model(weights="best"):
     cfg = get_config()
     path = f"{cfg.paths.models_dir}/{cfg.paths.run_id}_{weights}.pt"
     if not os.path.exists(path):
         path = f"{cfg.paths.models_dir}/{cfg.paths.run_id}_latest.pt"
-    payload = torch.load(path, map_location="cpu")
+    payload = load_sharded_checkpoint(path, map_location="cpu", num_shards=2)
     model = BetaVAE()
     model.load_state_dict(payload["model_state"])
     return model
