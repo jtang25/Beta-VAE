@@ -1,14 +1,18 @@
 # Beta-VAE for Brain Tumor MRI
 
-![Reconstruction demo](braintumor.gif)
+Variational Autoencoder with Squeeze-and-Excitation blocks for learning tumor-specific features from brain MRI slices. Built for applied research workflows (preprocessing → training → evaluation → interpretation).
 
-Variational Autoencoder with Squeeze-and-Excitation blocks for learning tumor-specific features from brain MRI slices. Includes preprocessing, training, evaluation, traversal, and visualization scripts.
-
-## Gallery
-- Training curve: ![Loss curves](outputs/figures/beta_vae_se_losses.png)
-- Reconstructions: ![Recon grid](outputs/figures/recon_epoch100.png)
-- Latent traversal: ![Traversal](outputs/figures/traversal_dim0.png)
-- Latent space preview: ![t-SNE](outputs/figures/latent_scatter_tsne.png)
+## Visual Overview
+- **Training stability**: phase losses (recon/kl/etc.).  
+  ![Loss curves](outputs/figures/beta_vae_se_losses.png)
+- **Recon quality**: input vs. reconstruction grid.  
+  ![Recon grid](outputs/figures/recon_epoch100.png)
+- **Latent structure (3D UMAP)**: rotating embedding with class coloring.  
+  ![UMAP 3D](outputs/figures/umap3d.gif)
+- **Traversals grid**: per-class latent traversals across ±3σ steps.  
+  ![Traversal grid](outputs/figures/traversal_grid.png)
+- **Interpolations**: smooth latent walks between samples.  
+  ![Interpolation](outputs/figures/interpolation.png)
 
 ## Quick Start
 - Python 3.8+; CUDA GPU recommended.
