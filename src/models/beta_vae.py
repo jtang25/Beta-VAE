@@ -49,7 +49,10 @@ class DeconvBlock(nn.Module):
     def __init__(self, in_ch, out_ch, norm_type, activation, use_se, se_reduction, up=True):
         super().__init__()
         if up:
-            self.up = nn.ConvTranspose2d(in_ch, out_ch, 4, stride=2, padding=1)
+            self.up = nn.Sequential(
+                nn.Upsample(scale_factor=2, mode='bilinear', align_corners=False),
+                nn.Conv2d(in_ch, out_ch, kernel_size=3, stride=1, padding=1)
+            )
         else:
             self.up = nn.Conv2d(in_ch, out_ch, 3, padding=1)
         self.norm = _get_norm(norm_type, out_ch)
@@ -85,7 +88,8 @@ class BetaVAE(nn.Module):
         self.use_ffl = getattr(lcfg, "use_ffl", False)
         self.lpips_weight = getattr(lcfg, "lpips_weight", 0.0)
         self.ffl_weight = getattr(lcfg, "ffl_weight", 0.0)
-        self.lpips_loss = LPIPSLoss(net=getattr(lcfg, "lpips_net", "alex"))
+        self.lpips_net_name = getattr(lcfg, "lpips_net", "alex")
+        self.lpips_loss = None
         self.ffl_loss = FocalFrequencyLoss(alpha=getattr(lcfg, "ffl_alpha", 1.0))
         chs = [in_ch]
         for i in range(blocks):
@@ -184,8 +188,7 @@ class BetaVAE(nn.Module):
         if self.recon_loss_type == "bce":
             return F.binary_cross_entropy(recon, x, reduction="sum") / x.size(0)
         if self.recon_loss_type == "l1":
-            # Mean per-pixel L1 (more stable vs. sum-per-batch).
-            return F.l1_loss(recon, x, reduction="mean")
+            return F.l1_loss(recon, x, reduction="sum") / x.size(0)
         raise ValueError("invalid reconstruction_loss")
 
     def loss(self, x, beta=None, capacity=None, free_bits=0.0, capacity_weight=None):
@@ -202,6 +205,10 @@ class BetaVAE(nn.Module):
         ff = torch.zeros((), device=x.device)
 
         if self.use_lpips and self.lpips_weight > 0:
+            if self.lpips_loss is None:
+                self.lpips_loss = LPIPSLoss(net=self.lpips_net_name).to(x.device)
+            else:
+                self.lpips_loss = self.lpips_loss.to(x.device)
             lp = self.lpips_loss(recon, x) * self.lpips_weight
 
         if self.use_ffl and self.ffl_weight > 0:

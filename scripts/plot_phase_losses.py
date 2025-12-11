@@ -16,7 +16,6 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import pandas as pd
 
-# Ensure src/ is on sys.path
 _SRC_ROOT = Path(__file__).resolve().parents[1] / "src"
 if str(_SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(_SRC_ROOT))
@@ -51,101 +50,157 @@ def plot_train_val_losses(df: pd.DataFrame, out_path: Path) -> None:
     if df_train.empty and df_val.empty:
         raise ValueError("No train or val metrics found in the log.")
 
-    x_train = df_train["step"] if "step" in df_train and df_train["step"].notna().any() else df_train.index
-    x_val = df_val["step"] if "step" in df_val and df_val["step"].notna().any() else df_val.index
+    if "step" in df_train and df_train["step"].notna().any():
+        x_train = df_train["step"]
+    else:
+        x_train = df_train.index
 
-    fig, axes = plt.subplots(2, 1, figsize=(10, 8), sharex=False)
+    if "step" in df_val and df_val["step"].notna().any():
+        x_val = df_val["step"]
+        x_val_label = "step"
+    elif "epoch" in df_val and df_val["epoch"].notna().any():
+        x_val = df_val["epoch"] * 360
+        x_val_label = "epoch (scaled to step)"
+    else:
+        x_val = df_val.index
+        x_val_label = "index"
 
-    ax_train = axes[0]
-    ax_train_kl = ax_train.twinx()
+    fig, axes = plt.subplots(3, 1, figsize=(10, 12), sharex=False)
 
-    recon_line = None
-    kl_line = None
+    ax_recon = axes[0]
+    train_recon_line = None
+    val_recon_line = None
 
-    if "train_recon_loss" in df_train and not df_train["train_recon_loss"].isna().all():
-        recon_line = ax_train.plot(
+    if not df_train.empty and "train_recon_loss" in df_train and not df_train["train_recon_loss"].isna().all():
+        train_recon_line = ax_recon.plot(
             x_train,
             df_train["train_recon_loss"],
             label="train_recon_loss",
             color="tab:blue",
         )[0]
 
-    if "train_kl" in df_train and not df_train["train_kl"].isna().all():
-        kl_line = ax_train_kl.plot(
+    if not df_val.empty and "val_recon_loss" in df_val and not df_val["val_recon_loss"].isna().all():
+        val_recon_line = ax_recon.plot(
+            x_val,
+            df_val["val_recon_loss"],
+            label="val_recon_loss",
+            color="tab:orange",
+            linestyle="--",
+        )[0]
+
+    if train_recon_line is None and val_recon_line is None:
+        ax_recon.text(0.5, 0.5, "No recon losses found", ha="center", va="center")
+
+    ax_recon.set_title("Reconstruction losses")
+    ax_recon.set_xlabel("step")
+    ax_recon.set_ylabel("recon loss")
+    ax_recon.grid(True, linestyle="--", alpha=0.4)
+
+    recon_lines = [l for l in (train_recon_line, val_recon_line) if l is not None]
+    recon_labels = [l.get_label() for l in recon_lines]
+    if recon_lines:
+        ax_recon.legend(recon_lines, recon_labels, loc="upper right")
+
+    ax_kl = axes[1]
+    train_kl_line = None
+    val_kl_line = None
+
+    if not df_train.empty and "train_kl" in df_train and not df_train["train_kl"].isna().all():
+        train_kl_line = ax_kl.plot(
             x_train,
             df_train["train_kl"],
             label="train_kl",
             color="tab:red",
         )[0]
 
-    if recon_line is None and kl_line is None:
-        ax_train.text(0.5, 0.5, "No train recon/KL found", ha="center", va="center")
-
-    ax_train.set_title("Train losses")
-    ax_train.set_xlabel("step")
-    ax_train.set_ylabel("recon loss", color="tab:blue")
-    ax_train.tick_params(axis="y", labelcolor="tab:blue")
-    ax_train.grid(True, linestyle="--", alpha=0.4)
-
-    ax_train_kl.set_ylabel("KL", color="tab:red")
-    ax_train_kl.tick_params(axis="y", labelcolor="tab:red")
-
-    lines = [l for l in (recon_line, kl_line) if l is not None]
-    labels = [l.get_label() for l in lines]
-    if lines:
-        ax_train.legend(lines, labels, loc="upper right")
-
-    ax_val = axes[1]
-    ax_val_kl = ax_val.twinx()
-
-    val_total_line = None
-    val_recon_line = None
-    val_kl_line = None
-
-    if not df_val.empty and "val_total_loss" in df_val and not df_val["val_total_loss"].isna().all():
-        val_total_line = ax_val.plot(
-            x_val,
-            df_val["val_total_loss"],
-            label="val_total_loss",
-            color="tab:orange",
-            marker="o",
-        )[0]
-
-    if not df_val.empty and "val_recon_loss" in df_val and not df_val["val_recon_loss"].isna().all():
-        val_recon_line = ax_val.plot(
-            x_val,
-            df_val["val_recon_loss"],
-            label="val_recon_loss",
-            color="tab:blue",
-            linestyle="--",
-            marker="x",
-        )[0]
-
     if not df_val.empty and "val_kl" in df_val and not df_val["val_kl"].isna().all():
-        val_kl_line = ax_val_kl.plot(
+        val_kl_line = ax_kl.plot(
             x_val,
             df_val["val_kl"],
             label="val_kl",
-            color="tab:red",
-            marker="s",
+            color="tab:green",
         )[0]
 
-    if all(v is None for v in (val_total_line, val_recon_line, val_kl_line)):
-        ax_val.text(0.5, 0.5, "No val metrics found", ha="center", va="center")
+    if train_kl_line is None and val_kl_line is None:
+        ax_kl.text(0.5, 0.5, "No KL losses found", ha="center", va="center")
 
-    ax_val.set_title("Validation losses")
-    ax_val.set_xlabel("step")
-    ax_val.set_ylabel("total/recon loss", color="tab:blue")
-    ax_val.tick_params(axis="y", labelcolor="tab:blue")
-    ax_val.grid(True, linestyle="--", alpha=0.4)
+    ax_kl.set_title("KL losses")
+    ax_kl.set_xlabel("step")
+    ax_kl.set_ylabel("KL")
+    ax_kl.grid(True, linestyle="--", alpha=0.4)
 
-    ax_val_kl.set_ylabel("KL", color="tab:red")
-    ax_val_kl.tick_params(axis="y", labelcolor="tab:red")
+    kl_lines = [l for l in (train_kl_line, val_kl_line) if l is not None]
+    kl_labels = [l.get_label() for l in kl_lines]
+    if kl_lines:
+        ax_kl.legend(kl_lines, kl_labels, loc="upper right")
 
-    val_lines = [l for l in (val_total_line, val_recon_line, val_kl_line) if l is not None]
-    val_labels = [l.get_label() for l in val_lines]
-    if val_lines:
-        ax_val.legend(val_lines, val_labels, loc="upper right")
+    ax_metrics = axes[2]
+    ax_metrics_r2 = ax_metrics.twinx()
+
+    auc_line = None
+    best_auc_line = None
+    best_corr_line = None
+    best_r2_line = None
+
+    if "epoch" in df_val and df_val["epoch"].notna().any():
+        x_metrics = df_val["epoch"]
+        x_metrics_label = "epoch"
+    else:
+        x_metrics = x_val
+        x_metrics_label = x_val_label
+
+    if not df_val.empty and "latent_probe_auc" in df_val and not df_val["latent_probe_auc"].isna().all():
+        auc_line = ax_metrics.plot(
+            x_metrics,
+            df_val["latent_probe_auc"],
+            label="latent_probe_auc",
+            color="tab:blue",
+        )[0]
+
+    if not df_val.empty and "best_dim_auc" in df_val and not df_val["best_dim_auc"].isna().all():
+        best_auc_line = ax_metrics.plot(
+            x_metrics,
+            df_val["best_dim_auc"],
+            label="best_dim_auc",
+            color="tab:orange",
+            linestyle="--",
+        )[0]
+
+    if not df_val.empty and "best_dim_corr" in df_val and not df_val["best_dim_corr"].isna().all():
+        best_corr_line = ax_metrics.plot(
+            x_metrics,
+            df_val["best_dim_corr"],
+            label="best_dim_corr",
+            color="tab:green",
+            linestyle=":",
+        )[0]
+
+    if not df_val.empty and "best_dim_r2" in df_val and not df_val["best_dim_r2"].isna().all():
+        best_r2_line = ax_metrics_r2.plot(
+            x_metrics,
+            df_val["best_dim_r2"],
+            label="best_dim_r2",
+            color="tab:red",
+        )[0]
+
+    if all(v is None for v in (auc_line, best_auc_line, best_corr_line, best_r2_line)):
+        ax_metrics.text(0.5, 0.5, "No probe metrics found", ha="center", va="center")
+
+    ax_metrics.set_title("Latent probe metrics")
+    ax_metrics.set_xlabel(x_metrics_label)
+    ax_metrics.set_ylabel("AUC / Corr")
+    ax_metrics.grid(True, linestyle="--", alpha=0.4)
+
+    ax_metrics_r2.set_ylabel("best_dim_r2", color="tab:red")
+    ax_metrics_r2.tick_params(axis="y", labelcolor="tab:red")
+
+    metric_lines = [l for l in (auc_line, best_auc_line, best_corr_line) if l is not None]
+    metric_labels = [l.get_label() for l in metric_lines]
+    if best_r2_line is not None:
+        metric_lines.append(best_r2_line)
+        metric_labels.append(best_r2_line.get_label())
+    if metric_lines:
+        ax_metrics.legend(metric_lines, metric_labels, loc="lower right")
 
     fig.tight_layout()
     out_path.parent.mkdir(parents=True, exist_ok=True)

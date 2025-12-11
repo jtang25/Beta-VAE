@@ -42,7 +42,6 @@ def split_from_raw(overwrite=False):
     if overwrite and os.path.isdir(proc):
         shutil.rmtree(proc)
 
-    # Try pre-split layout first (e.g., raw/Training/<class>, raw/Testing/<class>)
     pre_train, pre_test = _find_presplit_dirs(raw)
     if pre_train and pre_test:
         os.makedirs(train_dir, exist_ok=True)
@@ -51,7 +50,6 @@ def split_from_raw(overwrite=False):
         _copy_class_split(pre_test, test_dir)
         return
 
-    # Otherwise, split a single pool into train/test.
     classes = [c for c in os.listdir(raw) if os.path.isdir(os.path.join(raw, c))]
     try:
         train_ratio = cfg.data.train_ratio

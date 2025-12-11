@@ -16,7 +16,6 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import pandas as pd
 
-# Ensure src/ is on sys.path
 _SRC_ROOT = Path(__file__).resolve().parents[1] / "src"
 if str(_SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(_SRC_ROOT))
@@ -57,7 +56,6 @@ def plot_train_metrics(df, out_path):
     df_train = df[df["phase"] == "train"].copy()
     if df_train.empty:
         raise ValueError("No train-phase metrics found in the log.")
-    # Use step if present, else index
     x = df_train["step"] if "step" in df_train and df_train["step"].notna().any() else df_train.index
 
     fig, axes = plt.subplots(len(cols), 1, figsize=(8, 12), sharex=True)

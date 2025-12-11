@@ -100,8 +100,9 @@ class CapacityScheduler:
     def value(self, epoch: int):
         if not self.enabled:
             return None
-        if epoch < self.warm:
-            return self.C0
-        span = max(1, (self.total - self.warm))
-        prog = min(1.0, (epoch - self.warm) / span)
-        return self.C0 + prog * (self.C1 - self.C0)
+        e = max(0, epoch)
+        span = max(1, self.warm)
+        if e <= self.warm:
+            prog = min(1.0, e / span)
+            return self.C0 + prog * (self.C1 - self.C0)
+        return self.C1

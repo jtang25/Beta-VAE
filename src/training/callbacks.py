@@ -5,8 +5,12 @@ from utils.brain_tumor_utils.config_parser import get_config
 
 class GradScalerWrapper:
     def __init__(self, enabled):
-        self.enabled = enabled
-        self.scaler = torch.cuda.amp.GradScaler(enabled=enabled)
+        device_type = "cuda" if torch.cuda.is_available() else "cpu"
+        self.enabled = enabled and torch.cuda.is_available()
+        try:
+            self.scaler = torch.amp.GradScaler(device_type=device_type, enabled=self.enabled)
+        except TypeError:
+            self.scaler = torch.amp.GradScaler(enabled=self.enabled)
         self.params = None
     def set_params(self, params):
         self.params = list(params)
@@ -54,14 +58,26 @@ class CheckpointManager:
         os.makedirs(self.dir, exist_ok=True)
         self.run_id = cfg.paths.run_id
         self.best_value = None
-    def save_latest(self, epoch, extra):
+    def save_latest(self, epoch, total_steps, extra):
         path = os.path.join(self.dir, f"{self.run_id}_latest.pt")
-        torch.save({"epoch": epoch, "model_state": self.model.state_dict(), "optim_state": self.optimizer.state_dict(), **extra}, path)
-    def save_best(self, epoch, extra, monitor_value):
+        torch.save({
+            "epoch": epoch,
+            "total_steps": total_steps,
+            "model_state": self.model.state_dict(),
+            "optim_state": self.optimizer.state_dict(),
+            **extra
+        }, path)
+    def save_best(self, epoch, total_steps, extra, monitor_value):
         if self.best_value is None or monitor_value < self.best_value:
             self.best_value = monitor_value
             path = os.path.join(self.dir, f"{self.run_id}_best.pt")
-            torch.save({"epoch": epoch, "model_state": self.model.state_dict(), "optim_state": self.optimizer.state_dict(), **extra}, path)
+            torch.save({
+                "epoch": epoch,
+                "total_steps": total_steps,
+                "model_state": self.model.state_dict(),
+                "optim_state": self.optimizer.state_dict(),
+                **extra
+            }, path)
 
 
 def get_optimizer(model):

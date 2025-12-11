@@ -5,8 +5,9 @@ import random
 import numpy as np
 import torch
 from torchvision.utils import save_image
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import roc_auc_score, r2_score
 
-# Ensure the project src/ dir is on sys.path when run as a script.
 _SRC_ROOT = Path(__file__).resolve().parents[1]
 if str(_SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(_SRC_ROOT))
@@ -19,6 +20,80 @@ from models.beta_vae import BetaVAE
 from data_processing.augmentations import get_train_transforms, get_test_transforms
 from training.callbacks import EarlyStopping, CheckpointManager, GradScalerWrapper, build_scheduler, get_optimizer
 from training.schedulers import BetaScheduler, CapacityScheduler
+
+def compute_probe_metrics(latents, labels):
+    """
+    Compute global linear-probe AUC plus per-dimension AUC/correlation/R2 on latent means.
+    """
+    out = {
+        "latent_probe_auc": float("nan"),
+        "best_dim_auc": float("nan"),
+        "best_dim_corr": float("nan"),
+        "best_dim_r2": float("nan"),
+    }
+    if latents is None or len(latents) < 2:
+        return out
+    lat = np.asarray(latents)
+    y = np.asarray(labels)
+    classes = np.unique(y)
+    if len(classes) < 2:
+        return out
+    try:
+        clf = LogisticRegression(max_iter=2000, multi_class="auto")
+        clf.fit(lat, y)
+        prob = clf.predict_proba(lat)
+        if len(classes) == 2:
+            out["latent_probe_auc"] = float(roc_auc_score(y, prob[:, 1]))
+        else:
+            out["latent_probe_auc"] = float(roc_auc_score(y, prob, multi_class="ovr", average="macro"))
+    except Exception:
+        pass
+
+    best_auc = []
+    best_corr = []
+    best_r2 = []
+    for k in range(lat.shape[1]):
+        z = lat[:, k]
+        if np.allclose(z, z[0]):
+            continue
+        if len(classes) == 2:
+            try:
+                best_auc.append(roc_auc_score(y, z))
+            except Exception:
+                pass
+        else:
+            per_class_auc = []
+            for cls in classes:
+                y_bin = (y == cls).astype(int)
+                if y_bin.sum() == 0 or y_bin.sum() == len(y):
+                    continue
+                try:
+                    per_class_auc.append(roc_auc_score(y_bin, z))
+                except Exception:
+                    continue
+            if per_class_auc:
+                best_auc.append(np.max(per_class_auc))
+
+        for cls in classes:
+            y_bin = (y == cls).astype(int)
+            if np.std(y_bin) == 0:
+                continue
+            if np.std(z) > 0:
+                c = np.corrcoef(z, y_bin)[0, 1]
+                if not np.isnan(c):
+                    best_corr.append(abs(c))
+            try:
+                best_r2.append(r2_score(y_bin, z))
+            except Exception:
+                pass
+
+    if best_auc:
+        out["best_dim_auc"] = float(np.max(best_auc))
+    if best_corr:
+        out["best_dim_corr"] = float(np.max(best_corr))
+    if best_r2:
+        out["best_dim_r2"] = float(np.max(best_r2))
+    return out
 
 def set_seeds(seed):
     random.seed(seed)
@@ -40,7 +115,8 @@ def sample_reconstructions(model,
                            epoch,
                            fixed_paths=None,
                            transform=None,
-                           max_images=8):
+                           max_images=8,
+                           batch=None):
     """
     Save a panel of original vs reconstruction PLUS diagnostics.
 
@@ -60,7 +136,12 @@ def sample_reconstructions(model,
 
     model.eval()
 
-    if fixed_paths and len(fixed_paths) > 0:
+    if batch is not None:
+        x = batch["image"]
+        if isinstance(x, (list, tuple)):
+            x = torch.stack(x, 0)
+        filenames = batch.get("path", None)
+    elif fixed_paths and len(fixed_paths) > 0:
         imgs = []
         for p in fixed_paths[:max_images]:
             img = Image.open(p).convert("L" if model.cfg.data.grayscale else "RGB")
@@ -139,7 +220,7 @@ def weight_init(m):
         if m.bias is not None:
             torch.nn.init.zeros_(m.bias)
 
-def train():
+def train(resume="none"):
     cfg = get_config()
     ensure_dirs()
     init_logger()
@@ -172,12 +253,31 @@ def train():
     optimizer = get_optimizer(model)
     scheduler = build_scheduler(optimizer)
     beta_scheduler = BetaScheduler(cfg, total_epochs=epochs)
-    # Disable capacity path (always use beta weighting)
-    capacity_scheduler = None
+    capacity_scheduler = CapacityScheduler(cfg, total_epochs=epochs)
+    loss_cfg = getattr(cfg, "loss", None)
+    capacity_weight_cfg = getattr(loss_cfg, "capacity_weight", None) if loss_cfg else None
     early = EarlyStopping(patience=20, min_delta=0.0, mode="min")
     ckpt = CheckpointManager(model, optimizer)
     amp = GradScalerWrapper(enabled=cfg.training.mixed_precision)
     amp.set_params(model.parameters())
+
+    start_epoch = 1
+    total_steps = 0
+    if resume in ["best", "latest"]:
+        path = os.path.join(cfg.paths.models_dir, f"{cfg.paths.run_id}_{resume}.pt")
+        if os.path.exists(path):
+            payload = torch.load(path, map_location=device)
+            model.load_state_dict(payload.get("model_state", payload))
+            if "optim_state" in payload:
+                optimizer.load_state_dict(payload["optim_state"])
+            start_epoch = payload.get("epoch", 0) + 1
+            total_steps = payload.get("total_steps", 0)
+            if scheduler:
+                for _ in range(start_epoch - 1):
+                    scheduler.step()
+            print(f"[RESUME] Loaded checkpoint '{resume}' from {path}, restarting at epoch {start_epoch}")
+        else:
+            print(f"[RESUME] Requested '{resume}' but checkpoint not found at {path}; starting fresh.")
 
     figures_dir = cfg.paths.figures_dir
     os.makedirs(figures_dir, exist_ok=True)
@@ -191,13 +291,12 @@ def train():
                 "Some fixed_recon_paths do not exist:\n" + "\n".join(missing)
             )
 
-    total_steps = 0
-
-    for epoch in range(1, epochs + 1):
+    for epoch in range(start_epoch, epochs + 1):
+        val_preview_batch = None
         beta = beta_scheduler.value(epoch - 1)
-        capacity = None
+        capacity = capacity_scheduler.value(epoch) if capacity_scheduler.enabled else None
         free_bits = 0.0
-        if hasattr(cfg, "loss") and hasattr(cfg.loss, "free_bits"):
+        if capacity is None and hasattr(cfg, "loss") and hasattr(cfg.loss, "free_bits"):
             free_bits = cfg.loss.free_bits
         model.set_beta(beta)
         model.train()
@@ -217,8 +316,14 @@ def train():
                 x = torch.stack(x, 0)
             x = x.to(device, non_blocking=True)
 
-            with torch.cuda.amp.autocast(enabled=cfg.training.mixed_precision):
-                losses = model.loss(x, beta=beta, free_bits=free_bits)
+            with torch.amp.autocast("cuda", enabled=cfg.training.mixed_precision):
+                losses = model.loss(
+                    x,
+                    beta=beta,
+                    capacity=capacity,
+                    free_bits=free_bits,
+                    capacity_weight=capacity_weight_cfg if capacity is not None else None,
+                )
                 loss = losses["total"]
 
             amp.backward(loss, optimizer,
@@ -247,7 +352,7 @@ def train():
                 metrics = {
                     "epoch": epoch,
                     "beta": float(beta),
-                    "capacity": float(capacity) if capacity is not None else None,
+                    "capacity": float(capacity) if capacity is not None else 0.0,
                     "train_total_loss": running["total"] / denom,
                     "train_recon_loss": running["recon"] / denom,
                     "train_recon_base": running["recon_base"] / denom,
@@ -275,6 +380,8 @@ def train():
         val_recon_base = 0.0
         val_recon_lpips = 0.0
         val_recon_ffl = 0.0
+        val_latents = []
+        val_labels = []
         val_batches = 0
         with torch.no_grad():
             for j, batch in enumerate(test_loader):
@@ -282,7 +389,15 @@ def train():
                 if isinstance(x, (list, tuple)):
                     x = torch.stack(x, 0)
                 x = x.to(device, non_blocking=True)
-                l = model.loss(x, beta=beta, free_bits=free_bits)
+                if val_preview_batch is None:
+                    val_preview_batch = batch
+                l = model.loss(
+                    x,
+                    beta=beta,
+                    capacity=capacity,
+                    free_bits=free_bits,
+                    capacity_weight=capacity_weight_cfg if capacity is not None else None,
+                )
                 val_tot += l["total"].item()
                 val_rec += l["recon"].item()
                 val_recon_base += l.get("recon_base", l["recon"]).item()
@@ -291,6 +406,8 @@ def train():
                 val_kl += l["kl_mean"].item()
                 val_kl_per_dim_mean = l["kl_per_dim"].mean().item()
                 val_loss_mode = l.get("mode", None)
+                val_latents.append(l["mu"].cpu())
+                val_labels.extend(batch["label"])
                 val_batches += 1
                 if debug_enabled and j + 1 >= debug_cfg.max_val_batches:
                     break
@@ -303,10 +420,18 @@ def train():
         val_kl_avg = val_kl / max(1, val_batches)
         final_train_kl_mean = running["kl"] / (i + 1)
         final_train_kl_effective = train_kl_effective_last
+        probe_metrics = {"latent_probe_auc": float("nan"),
+                         "best_dim_auc": float("nan"),
+                         "best_dim_corr": float("nan"),
+                         "best_dim_r2": float("nan")}
+        if val_latents and len(val_labels) >= 2:
+            lat_arr = torch.cat(val_latents, dim=0).numpy()
+            probe_metrics = compute_probe_metrics(lat_arr, val_labels)
+        capacity_logged = float(capacity) if capacity is not None else 0.0
         metrics = {
             "epoch": epoch,
             "beta": float(beta),
-            "capacity": float(capacity) if capacity is not None else None,
+            "capacity": capacity_logged,
             "val_total_loss": val_total,
             "val_recon_loss": val_recon,
             "val_recon_base": val_recon_base_avg,
@@ -316,12 +441,16 @@ def train():
             "val_kl_per_dim_mean": val_kl_per_dim_mean,
             "loss_mode": val_loss_mode,
             "train_kl_mean": final_train_kl_mean,
-            "train_kl_effective_last": final_train_kl_effective
+            "train_kl_effective_last": final_train_kl_effective,
+            "latent_probe_auc": probe_metrics["latent_probe_auc"],
+            "best_dim_auc": probe_metrics["best_dim_auc"],
+            "best_dim_corr": probe_metrics["best_dim_corr"],
+            "best_dim_r2": probe_metrics["best_dim_r2"],
         }
         log_metrics(metrics, step=total_steps, phase="val")
 
-        ckpt.save_latest(epoch, {"val_total": val_total})
-        ckpt.save_best(epoch, {"val_total": val_total}, monitor_value=val_total)
+        ckpt.save_latest(epoch, total_steps, {"val_total": val_total})
+        ckpt.save_best(epoch, total_steps, {"val_total": val_total}, monitor_value=val_total)
 
         sample_reconstructions(
             model,
@@ -331,6 +460,7 @@ def train():
             epoch,
             fixed_paths=fixed_paths,
             transform=test_tf,
+            batch=val_preview_batch,
         )
 
         early.update(val_total)
@@ -344,10 +474,12 @@ def _parse_args():
     parser = argparse.ArgumentParser(description="Train Beta-VAE model")
     parser.add_argument("--config", type=str, default=None,
                         help="Path to YAML config file (optional)")
+    parser.add_argument("--resume", type=str, choices=["best", "latest", "none"], default="none",
+                        help="Resume from a checkpoint in models_dir (best|latest|none)")
     return parser.parse_args()
 
 if __name__ == "__main__":
     args = _parse_args()
     if args.config:
         os.environ["CONFIG_PATH"] = args.config
-    train()
+    train(resume=args.resume)

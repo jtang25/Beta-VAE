@@ -6,7 +6,6 @@ import torch
 from sklearn.metrics import roc_auc_score
 from sklearn.linear_model import LogisticRegression
 
-# Ensure src/ is on sys.path when run as a script.
 _SRC_ROOT = Path(__file__).resolve().parents[1]
 if str(_SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(_SRC_ROOT))
@@ -37,7 +36,7 @@ def extract_latents(model, data_loader, device):
             mu, logvar = model.encode(x)
             lat.append(mu.cpu())
             labs.extend(batch["label"])
-            kl = 0.5 * (mu.pow(2) + logvar.exp() - logvar - 1.0)  # per-dim KL
+            kl = 0.5 * (mu.pow(2) + logvar.exp() - logvar - 1.0)
             kl_chunks.append(kl.cpu())
     L = torch.cat(lat, dim=0).numpy()
     K = torch.cat(kl_chunks, dim=0).numpy()
@@ -46,32 +45,57 @@ def extract_latents(model, data_loader, device):
 
 def per_dimension_auc(L, y):
     out = []
+    classes = np.unique(y)
+    multiclass = len(classes) > 2
     for i in range(L.shape[1]):
         scores = L[:, i]
         try:
-            auc = roc_auc_score(y, scores if scores.var()>0 else np.zeros_like(scores))
-        except:
+            if multiclass:
+                aucs = []
+                for cls in classes:
+                    y_bin = (y == cls).astype(int)
+                    if y_bin.sum() == 0 or y_bin.sum() == len(y):
+                        continue
+                    aucs.append(roc_auc_score(y_bin, scores if scores.var() > 0 else np.zeros_like(scores)))
+                auc = np.max(aucs) if aucs else float("nan")
+            else:
+                auc = roc_auc_score(y, scores if scores.var() > 0 else np.zeros_like(scores))
+        except Exception:
             auc = float("nan")
         out.append((i, float(auc)))
     return out
 
 def per_dimension_abs_auc(L, y):
     out = []
+    classes = np.unique(y)
+    multiclass = len(classes) > 2
     for i in range(L.shape[1]):
         scores = np.abs(L[:, i])
         try:
-            auc = roc_auc_score(y, scores if scores.var()>0 else np.zeros_like(scores))
-        except:
+            if multiclass:
+                aucs = []
+                for cls in classes:
+                    y_bin = (y == cls).astype(int)
+                    if y_bin.sum() == 0 or y_bin.sum() == len(y):
+                        continue
+                    aucs.append(roc_auc_score(y_bin, scores if scores.var() > 0 else np.zeros_like(scores)))
+                auc = np.max(aucs) if aucs else float("nan")
+            else:
+                auc = roc_auc_score(y, scores if scores.var() > 0 else np.zeros_like(scores))
+        except Exception:
             auc = float("nan")
         out.append((i, float(auc)))
     return out
 
 def logistic_weights(L, y):
-    clf = LogisticRegression(max_iter=2000)
+    clf = LogisticRegression(max_iter=2000, multi_class="auto")
     clf.fit(L, y)
-    w = clf.coef_[0] if clf.coef_.ndim > 1 else clf.coef_.ravel()
-    order = np.argsort(np.abs(w))[::-1]
-    return order, w
+    coef = clf.coef_
+    if coef.ndim == 1:
+        coef = coef[None, :]
+    max_abs = np.max(np.abs(coef), axis=0)
+    order = np.argsort(max_abs)[::-1]
+    return order, coef, clf.classes_
 
 def main():
     cfg = get_config()
@@ -84,40 +108,49 @@ def main():
     aucs_abs = per_dimension_abs_auc(L, y)
     kl_mean = K.mean(axis=0)
     mu_var = L.var(axis=0)
-    order, w = logistic_weights(L, y)
+    order, coef, classes = logistic_weights(L, y)
     import pandas as pd
     import json
     from utils.brain_tumor_utils.io import save_table, save_json
     df = pd.DataFrame(aucs, columns=["latent_dim","single_dim_auc"])
     save_table(df, "per_dimension_auc")
 
-    usage_df = pd.DataFrame({
+    usage_payload = {
         "latent_dim": np.arange(L.shape[1]),
         "kl_mean": kl_mean,
         "mu_var": mu_var,
         "single_dim_auc": [a[1] for a in aucs],
         "single_dim_auc_abs": [a[1] for a in aucs_abs],
-        "logreg_weight": w
-    })
+        "logreg_weight_maxabs": np.max(np.abs(coef), axis=0)
+    }
+    idx_to_class = {v: k for k, v in getattr(test_loader.dataset, "class_to_idx", {}).items()}
+    for cls_idx, cls_name in enumerate(classes):
+        cname = idx_to_class.get(cls_name, f"class{cls_name}")
+        usage_payload[f"logreg_weight_{cname}"] = coef[cls_idx]
+    usage_df = pd.DataFrame(usage_payload)
     save_table(usage_df.sort_values("kl_mean", ascending=False), "latent_usage")
 
     best = max(aucs, key=lambda t: (t[1] if not np.isnan(t[1]) else -1))
     best_abs = max(aucs_abs, key=lambda t: (t[1] if not np.isnan(t[1]) else -1))
 
-    top_logreg = [{
-        "latent_dim": int(d),
-        "abs_weight": float(abs(w[d])),
-        "weight": float(w[d]),
-        "kl_mean": float(kl_mean[d]),
-        "mu_var": float(mu_var[d]),
-        "single_dim_auc": float([a[1] for a in aucs][d])
-    } for d in order[:10]]
+    top_logreg = []
+    for d in order[:10]:
+        weights_per_class = {
+            str(idx_to_class.get(cls, cls)): float(coef_row[d])
+            for cls, coef_row in zip(classes, coef)
+        }
+        top_logreg.append({
+            "latent_dim": int(d),
+            "abs_weight_max": float(np.max(np.abs(coef[:, d]))),
+            "weights": weights_per_class,
+            "kl_mean": float(kl_mean[d]),
+            "mu_var": float(mu_var[d]),
+            "single_dim_auc": float([a[1] for a in aucs][d])
+        })
 
-    # Traversal recommendation: by single-dim AUC descending
     traversal_order_auc = [int(i) for i, _ in sorted(aucs, key=lambda t: (t[1] if not np.isnan(t[1]) else -1), reverse=True)]
     traversal_order_kl = [int(i) for i in np.argsort(-kl_mean)]
 
-    # Correlation summary (top correlated pairs)
     corr = np.corrcoef(L, rowvar=False)
     triu_idx = np.triu_indices_from(corr, k=1)
     corr_pairs = []

@@ -20,7 +20,7 @@ class FocalFrequencyLoss(nn.Module):
         pred_f = pred.float()
         target_f = target.float()
 
-        with torch.cuda.amp.autocast(enabled=False):
+        with torch.amp.autocast("cuda", enabled=False):
             pred_fft = torch.fft.fft2(pred_f, norm="ortho")
             target_fft = torch.fft.fft2(target_f, norm="ortho")
 
@@ -49,13 +49,11 @@ class LPIPSLoss(nn.Module):
             raise ImportError("lpips is required for LPIPSLoss. Please install the 'lpips' package.") from exc
         self.normalize = normalize
         self.loss_fn = lpips.LPIPS(net=net)
-        # LPIPS weights are pretrained and should stay frozen/in eval to avoid drift/negatives.
         self.loss_fn.eval()
         for p in self.loss_fn.parameters():
             p.requires_grad = False
 
     def _ensure_device(self, x: torch.Tensor):
-        # Keep LPIPS network on the same device as inputs.
         if next(self.loss_fn.parameters()).device != x.device:
             self.loss_fn = self.loss_fn.to(x.device)
 
@@ -72,8 +70,6 @@ class LPIPSLoss(nn.Module):
         self._ensure_device(pred)
         pred_p = self._prep(pred).float()
         target_p = self._prep(target).float()
-        # Disable autocast inside LPIPS to avoid numerical quirks.
-        with torch.cuda.amp.autocast(enabled=False):
+        with torch.amp.autocast("cuda", enabled=False):
             out = self.loss_fn(pred_p, target_p)
-        # LPIPS is a distance and should be non-negative; clamp to avoid tiny negatives from numeric drift.
         return torch.clamp_min(out, 0.0).mean()

@@ -2,7 +2,6 @@ import sys
 from pathlib import Path
 import torch
 
-# Ensure src/ is on the path when run as a script.
 _SRC_ROOT = Path(__file__).resolve().parents[1]
 if str(_SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(_SRC_ROOT))
@@ -40,7 +39,12 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     train_tf = get_train_transforms()
     test_tf = get_test_transforms()
-    train_loader, test_loader = build_dataloaders(transform_train=train_tf, transform_test=test_tf)
+    train_loader, test_loader = build_dataloaders(
+        transform_train=train_tf,
+        transform_test=test_tf,
+        num_workers=0,
+        pin_memory=False
+    )
     model = load_model("best")
     model.to(device)
     evaluate_full(model, train_loader, test_loader, device)

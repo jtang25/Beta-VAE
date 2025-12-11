@@ -17,7 +17,6 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
-# Ensure src/ is importable when run as a script.
 _SRC_ROOT = Path(__file__).resolve().parents[1] / "src"
 if str(_SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(_SRC_ROOT))
@@ -43,7 +42,7 @@ def pattern_for_class(cls, rng, size):
         diag = ((xx + yy) % (size // 6)) < (size // 16)
         anti = ((xx - yy) % (size // 6)) < (size // 16)
         arr[diag | anti] += 0.25
-    else:  # notumor
+    else:
         arr += rng.normal(0.0, 0.02, size=arr.shape)
     return np.clip(arr, 0, 1)
 

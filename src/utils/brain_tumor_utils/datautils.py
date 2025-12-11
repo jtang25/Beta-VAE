@@ -64,7 +64,8 @@ class BrainTumorDataset(Dataset):
         label = self.labels[idx]
         return {"image": img, "label": label, "class_name": cls, "path": path}
 
-def build_dataloaders(transform_train=None, transform_test=None, train_limit=None, test_limit=None):
+def build_dataloaders(transform_train=None, transform_test=None, train_limit=None, test_limit=None,
+                      num_workers=None, pin_memory=None):
     cfg = get_config()
     train_ds = BrainTumorDataset(cfg.paths.processed_dir, "train", transform=transform_train, sample_limit=train_limit)
     test_ds = BrainTumorDataset(cfg.paths.processed_dir, "test", transform=transform_test, sample_limit=test_limit)
@@ -72,19 +73,21 @@ def build_dataloaders(transform_train=None, transform_test=None, train_limit=Non
         test_ds = train_ds
     g = torch.Generator()
     g.manual_seed(cfg.data.seed)
+    worker_count = cfg.training.num_workers if num_workers is None else num_workers
+    pin = cfg.training.pin_memory if pin_memory is None else pin_memory
     train_loader = DataLoader(
         train_ds,
         batch_size=cfg.training.batch_size,
         shuffle=True,
-        num_workers=cfg.training.num_workers,
-        pin_memory=cfg.training.pin_memory,
+        num_workers=worker_count,
+        pin_memory=pin,
         generator=g
     )
     test_loader = DataLoader(
         test_ds,
         batch_size=cfg.training.batch_size,
         shuffle=False,
-        num_workers=cfg.training.num_workers,
-        pin_memory=cfg.training.pin_memory
+        num_workers=worker_count,
+        pin_memory=pin
     )
     return train_loader, test_loader
